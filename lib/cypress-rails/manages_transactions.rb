@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative "initializer_hooks"
 
 module CypressRails
@@ -56,9 +58,13 @@ module CypressRails
     end
 
     def gather_connections
-      setup_shared_connection_pool
+      setup_shared_connection_pool if connection_handlers?
 
       ActiveRecord::Base.connection_handler.connection_pool_list.map(&:connection)
+    end
+
+    def connection_handlers?
+      ActiveRecord::Base.respond_to?(:connection_handlers)
     end
 
     # Shares the writing connection pool with connections on
@@ -71,13 +77,14 @@ module CypressRails
       writing_handler = ActiveRecord::Base.connection_handler
 
       ActiveRecord::Base.connection_handlers.values.each do |handler|
-        if handler != writing_handler
-          handler.connection_pool_list.each do |pool|
-            name = pool.spec.name
-            writing_connection = writing_handler.retrieve_connection_pool(name)
-            return nil unless writing_connection
-            handler.send(:owner_to_pool)[name] = writing_connection
-          end
+        next unless handler != writing_handler
+
+        handler.connection_pool_list.each do |pool|
+          name = pool.spec.name
+          writing_connection = writing_handler.retrieve_connection_pool(name)
+          return nil unless writing_connection
+
+          handler.send(:owner_to_pool)[name] = writing_connection
         end
       end
     end
